@@ -1,0 +1,11 @@
+# depslib dependency file v1.0
+1760801311 source:e:\documetos\mipokertracker\main.c
+	"main.h"
+
+1759982002 e:\documetos\mipokertracker\main.h
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+	<time.h>
+	<io.h>
+
