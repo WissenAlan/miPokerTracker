@@ -11,32 +11,56 @@ int main() {
         printf("6) Crear .dat\n");
         printf("7) Leer .dat\n");
         printf("8) eliminar ult\n");
+        printf("9) vaciar .dat\n");
         printf("0) Salir\n");
         printf("Opcion: ");
         scanf("%d", &opcion);
-        if (opcion == 1) {
+        switch (opcion) {
+        case 1:
+            printf("\nOpcion no disponible.\n");
             char nombre[50];
             printf("Ingrese nombre del archivo .txt: ");
             scanf("%s", nombre);
             cargarDesdeTxt(nombre);
-        } else if (opcion == 2)
+            break;
+        case 2:
             cargarManual();
-        else if (opcion == 3)
+            break;        case 3:
             aniadirRecompensa();
-        else if (opcion == 4)
+            break;
+        case 4:
             verGrafica();
-        else if (opcion == 5) {
+            break;
+        case 5:
             Sesion ult;
             leerUltimaSesion(&ult);
             printf("\nGanancia: %g\n", ult.ganancia);
-        } else if (opcion == 6)
-//            crearBin();
-            printf("\nOpcion no disponible.\n");
-        else if (opcion == 7)
+            break;
+        case 6:
+            char res;
+            printf("\n¿Estas seguro que desea recrear el archivo saldo.dat? 'S' para confirmar: \n");
+            scanf(" %c", &res);
+            if(res == 'S' || res == 's')
+                crearBin();
+            break;
+        case 7:
             leerBin();
-        else if (opcion == 8)
-//            borrarUltima();
-            printf("\nOpcion no disponible.\n");
+            break;
+        case 8:
+            borrarUltima();
+//            printf("\nOpcion no disponible.\n");
+            break;
+        case 9:
+            printf("\n¿Estas seguro que desea recrear el archivo saldo.dat? 'S' para confirmar: \n");
+            scanf("%c", &res);
+            if(res == 'S' || res == 's'){
+                FILE *bin = fopen(ARCHIVO_DAT, "wb");
+                fclose(bin);
+            }
+            break;
+        default:
+            break;
+        }
     } while (opcion != 0);
     return 0;
 }
@@ -161,7 +185,7 @@ void cargarDesdeTxt(const char *nombre) {
 void cargarManual() {
     Sesion ultima, nueva;
     float saldoIngresado;
-    int cargado = NUEVA, dia, mes, anio = 2025;
+    int cargado = NUEVA, dia, mes, anio = 2026;
     char fecha[5];
     printf("Ingrese saldo de banca de la sesion: ");
     scanf("%f", &saldoIngresado);
@@ -198,15 +222,14 @@ void aniadirRecompensa() {
     printf("2) Retiro (resta dinero)\n");
     printf("Opcion: ");
     scanf("%d", &tipo);
-    if (tipo != RECOM && tipo != RETIRO) {
+    if (!(tipo == RECOM || tipo == RETIRO)) {
         printf("Opcion invalida.\n");
         return;
     }
-    tipo == RETIRO ? -1 : RECOM;
-    printf("Ingrese monto: ");
+    tipo = (tipo == RETIRO) ? -1 : RECOM;
+    printf("Ingrese monto (%d): ",tipo);
     scanf("%f", &monto);
     if (leerUltimaSesion(&ultima)) {
-        printf("Recompensa: .\n",(monto*tipo));
         nueva = ultima; // copiamos la ultima sesion
         nueva.banca = ultima.banca + (monto * tipo);
     } else {
@@ -217,7 +240,7 @@ void aniadirRecompensa() {
     }
     nueva.minutos = 0;
     nueva.cantManos = 0;
-    nueva.recompensa = (tipo = RECOM ? RECOM : RETIRO);
+    nueva.recompensa = ((tipo == RECOM) ? RECOM : RETIRO);
     guardarSesion(nueva, NUEVA);
     if (tipo == RECOM)
         printf("Recompensa agregada.\n");
@@ -248,16 +271,18 @@ void verGrafica() {
         return;
     }
     fprintf(gp,
-            "set title 'Evolución del saldo'\n"
-            "set xdata time\n"
-            "set xlabel 'Fecha'\n"
-            "set ylabel 'Saldo'\n"
-            "set grid\n"
-            "set xtics rotate by -45\n"
-            "plot 'datos_grafica.dat' using 1:2 with lines title 'Saldo juego'\n"
-            "pause -1 'Presione Enter para salir'\n");
+    "set title 'Evolución del saldo'\n"
+    "set xdata time\n"
+    "set timefmt '%%d/%%m/%%Y'\n"
+    "set format x '%%m/%%y'\n"
+    "set xlabel 'Fecha'\n"
+    "set ylabel 'Saldo'\n"
+    "set grid\n"
+    "set xtics rotate by -45\n"
+    "plot 'datos_grafica.dat' using 1:2 with lines title 'Saldo juego'\n"
+    "pause -1\n");
     fclose(gp);
     // Ejecutar gnuplot
-    system("gnuplot grafica.gnuplot");
+    system("\"D:\\gnuplot\\bin\\gnuplot.exe\" grafica.gnuplot");
 }
 
