@@ -1,5 +1,28 @@
-obj/
+﻿# Dependencias Node.js
+node_modules/
+dist/
+build/
+.cache/
+
+# Datos privados de usuario y backups
+data/sessions.json
+data/backups/
+data/imported_hands/
+
+# Logs y temporales
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+.env.local
+
+# Archivos legacy C/CodeBlocks
 *.layout
 *.depend
 *.gnuplot
-*.dat
+v1-c/bin/
+v1-c/obj/
+v1-c/*.dat
+v1-c/datos_grafica.dat
+v1-c/grafica.dat
