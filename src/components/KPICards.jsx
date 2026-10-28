@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wallet, TrendingUp, Gift, Flame, Clock, Trophy, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Wallet, TrendingUp, Gift, Flame, Clock, Trophy, ArrowUpRight, ArrowDownRight, ArrowDownLeft } from 'lucide-react';
 
 export default function KPICards({ sessions }) {
   if (!sessions || sessions.length === 0) return null;
@@ -11,6 +11,7 @@ export default function KPICards({ sessions }) {
   let totalManos = 0;
   let totalMinutos = 0;
   let totalRecompensas = 0;
+  let totalDepositos = 0;
   let totalRetiros = 0;
   let sesionesCount = 0;
 
@@ -18,30 +19,29 @@ export default function KPICards({ sessions }) {
     totalManos += s.cantManos || 0;
     totalMinutos += s.minutos || 0;
     if (s.tipo === 'recompensa') totalRecompensas += (s.deltaBanca || 0);
+    if (s.tipo === 'deposito') totalDepositos += (s.deltaBanca || 0);
     if (s.tipo === 'retiro') totalRetiros += Math.abs(s.deltaBanca || 0);
     if (s.tipo === 'sesion') sesionesCount++;
   });
 
   const totalHoras = totalMinutos > 0 ? (totalMinutos / 60) : 0;
   const gananciaHora = totalHoras > 0 ? (gananciaTotal / totalHoras) : 0;
+  const beneficioNetoTotal = Number((bancaActual - totalDepositos + totalRetiros).toFixed(2));
 
   const cards = [
     {
       title: 'Banca Actual',
       value: `$${bancaActual.toFixed(2)}`,
-      subtitle: `${sessions.length} registros totales`,
+      subtitle: `Entrada: $${totalDepositos.toFixed(2)} (Neto: +$${beneficioNetoTotal.toFixed(2)})`,
       icon: Wallet,
-      color: 'from-emerald-500/20 to-teal-500/10 border-emerald-500/30 text-emerald-400',
-      badge: `${sesionesCount} sesiones`,
-      badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+      color: 'from-emerald-500/20 to-teal-500/10 border-emerald-500/30 text-emerald-400'
     },
     {
       title: 'Ganancia en Mesas',
       value: `${gananciaTotal >= 0 ? '+' : ''}$${gananciaTotal.toFixed(2)}`,
       subtitle: 'Beneficio neto en juego',
       icon: TrendingUp,
-      color: gananciaTotal >= 0 ? 'from-green-500/20 to-emerald-500/10 border-green-500/30 text-green-400' : 'from-rose-500/20 to-red-500/10 border-rose-500/30 text-rose-400',
-      trend: gananciaTotal >= 0 ? ArrowUpRight : ArrowDownRight
+      color: gananciaTotal >= 0 ? 'from-green-500/20 to-emerald-500/10 border-green-500/30 text-green-400' : 'from-rose-500/20 to-red-500/10 border-rose-500/30 text-rose-400'
     },
     {
       title: 'Recompensas / Cofres',
@@ -67,7 +67,7 @@ export default function KPICards({ sessions }) {
     {
       title: 'Rendimiento / Hora',
       value: `${gananciaHora >= 0 ? '+' : ''}$${gananciaHora.toFixed(2)}/h`,
-      subtitle: 'Ganancia horaria promedio',
+      subtitle: 'Ganancia horaria en juego',
       icon: Trophy,
       color: 'from-cyan-500/20 to-sky-500/10 border-cyan-500/30 text-cyan-400'
     }

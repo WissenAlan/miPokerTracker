@@ -3,7 +3,7 @@ import { Search, Filter, Trash2, Download, ArrowUpDown, ChevronLeft, ChevronRigh
 
 export default function SessionTable({ sessions, onDeleteSession }) {
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState('all'); // 'all' | 'sesion' | 'recompensa' | 'retiro'
+  const [filterType, setFilterType] = useState('all'); // 'all' | 'sesion' | 'recompensa' | 'movimientos'
   const [page, setPage] = useState(1);
   const pageSize = 15;
 
@@ -11,7 +11,10 @@ export default function SessionTable({ sessions, onDeleteSession }) {
     if (!sessions) return [];
     return sessions
       .filter(s => {
-        if (filterType !== 'all' && s.tipo !== filterType) return false;
+        if (filterType === 'sesion' && s.tipo !== 'sesion') return false;
+        if (filterType === 'recompensa' && s.tipo !== 'recompensa') return false;
+        if (filterType === 'movimientos' && s.tipo !== 'deposito' && s.tipo !== 'retiro') return false;
+
         if (search) {
           const q = search.toLowerCase();
           const matchFecha = s.fecha && s.fecha.toLowerCase().includes(q);
@@ -79,10 +82,10 @@ export default function SessionTable({ sessions, onDeleteSession }) {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Buscar por fecha..."
+              placeholder="Buscar por fecha o notas..."
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
-              className="pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-44"
+              className="pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-48"
             />
           </div>
 
@@ -92,7 +95,7 @@ export default function SessionTable({ sessions, onDeleteSession }) {
               { id: 'all', label: 'Todos' },
               { id: 'sesion', label: 'Sesiones' },
               { id: 'recompensa', label: 'Cofres' },
-              { id: 'retiro', label: 'Retiros' }
+              { id: 'movimientos', label: 'Depósitos / Retiros' }
             ].map(f => (
               <button
                 key={f.id}
@@ -144,11 +147,14 @@ export default function SessionTable({ sessions, onDeleteSession }) {
               currentItems.map((item, idx) => {
                 const isSesion = item.tipo === 'sesion';
                 const isRecompensa = item.tipo === 'recompensa';
+                const isDeposito = item.tipo === 'deposito';
                 const isRetiro = item.tipo === 'retiro';
 
                 const deltaColor =
                   isSesion
                     ? (item.deltaGanancia >= 0 ? 'text-green-400' : 'text-rose-400')
+                    : isDeposito
+                    ? 'text-blue-400'
                     : isRecompensa
                     ? 'text-amber-400'
                     : 'text-rose-400';
@@ -160,11 +166,17 @@ export default function SessionTable({ sessions, onDeleteSession }) {
 
                 return (
                   <tr key={item.id || idx} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="py-2.5 px-4 font-sans font-medium text-slate-200">{item.fecha}</td>
+                    <td className="py-2.5 px-4 font-sans font-medium text-slate-200">
+                      <div>{item.fecha}</div>
+                      {item.notas && (
+                        <div className="text-[10px] text-slate-500 font-sans truncate max-w-xs">{item.notas}</div>
+                      )}
+                    </td>
                     <td className="py-2.5 px-4 font-sans">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase ${
                         isSesion ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
                         isRecompensa ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                        isDeposito ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
                         'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                       }`}>
                         {item.tipo}

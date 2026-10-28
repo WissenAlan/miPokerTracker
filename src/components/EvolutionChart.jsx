@@ -36,7 +36,9 @@ export default function EvolutionChart({ sessions }) {
             <span>{item.fecha}</span>
             <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider ${
               item.tipo === 'sesion' ? 'bg-emerald-500/20 text-emerald-300' :
-              item.tipo === 'recompensa' ? 'bg-amber-500/20 text-amber-300' : 'bg-rose-500/20 text-rose-300'
+              item.tipo === 'recompensa' ? 'bg-amber-500/20 text-amber-300' :
+              item.tipo === 'deposito' ? 'bg-blue-500/20 text-blue-300' :
+              'bg-rose-500/20 text-rose-300'
             }`}>
               {item.tipo}
             </span>
@@ -68,9 +70,14 @@ export default function EvolutionChart({ sessions }) {
             ) : (
               <div className="flex justify-between gap-6">
                 <span className="text-slate-400">Monto Movimiento:</span>
-                <span className="font-mono font-bold text-amber-400">
+                <span className={`font-mono font-bold ${item.tipo === 'deposito' ? 'text-blue-400' : item.deltaBanca >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
                   {item.deltaBanca >= 0 ? '+' : ''}${item.deltaBanca.toFixed(2)}
                 </span>
+              </div>
+            )}
+            {item.notas && (
+              <div className="pt-1 mt-1 border-t border-slate-800 text-[10px] text-slate-400 italic">
+                {item.notas}
               </div>
             )}
           </div>
