@@ -26,3 +26,5 @@ v1-c/obj/
 v1-c/*.dat
 v1-c/datos_grafica.dat
 v1-c/grafica.dat
+
+data/config.json
