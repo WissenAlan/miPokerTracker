@@ -3,6 +3,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const { parseHandHistoryContent, summarizeHands } = require('./pokerstars-parser');
+const { syncPokerStarsFolder, startAutoWatcher, resolveHandHistoryDir } = require('./pokerstars-sync');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -21,7 +22,7 @@ function getConfig() {
   if (!fs.existsSync(CONFIG_FILE)) {
     const initialConfig = {
       pokerstarsDir: defaultDir,
-      heroName: '',
+      heroName: 'alan_vincen',
       autoSync: true
     };
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(initialConfig, null, 2), 'utf-8');
@@ -30,7 +31,7 @@ function getConfig() {
   try {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
   } catch (err) {
-    return { pokerstarsDir: defaultDir, heroName: '', autoSync: true };
+    return { pokerstarsDir: defaultDir, heroName: 'alan_vincen', autoSync: true };
   }
 }
 
@@ -95,7 +96,7 @@ app.get('/api/sessions', (req, res) => {
 
 // POST new session (Manual)
 app.post('/api/sessions', (req, res) => {
-  const { fecha, cantManos, minutos, deltaGanancia, deltaBanca, notas } = req.body;
+  const { fecha, cantManos, minutos, deltaGanancia, deltaBanca, stake, notas } = req.body;
   const sessions = loadSessions();
   const last = sessions[sessions.length - 1] || { banca: 0, ganancia: 0 };
 
@@ -115,6 +116,8 @@ app.post('/api/sessions', (req, res) => {
     }
   }
 
+  const determinedStake = stake || (isoDate >= '2026-09-30' ? 'NL5' : 'NL2');
+
   const newSession = {
     id: `sess-${Date.now()}`,
     fecha: fecha || new Date().toLocaleDateString('es-ES'),
@@ -126,6 +129,8 @@ app.post('/api/sessions', (req, res) => {
     ganancia: newGanancia,
     deltaBanca: parsedDeltaBanca,
     deltaGanancia: parsedDeltaGan,
+    stake: determinedStake,
+    stakeLabel: determinedStake === 'NL5' ? 'NL5 ($5)' : 'NL2 ($2)',
     recompensaCode: 0,
     fuente: 'manual',
     notas: notas || ''
@@ -137,7 +142,7 @@ app.post('/api/sessions', (req, res) => {
   res.json({ success: true, data: newSession });
 });
 
-// POST new reward / withdrawal
+// POST new reward / withdrawal / deposit
 app.post('/api/rewards', (req, res) => {
   const { monto, tipo, fecha, notas } = req.body; // tipo: 'recompensa' | 'retiro' | 'deposito'
   const sessions = loadSessions();
@@ -155,6 +160,10 @@ app.post('/api/rewards', (req, res) => {
     }
   }
 
+  let code = 1;
+  if (tipo === 'retiro') code = 2;
+  else if (tipo === 'deposito') code = 3;
+
   const newReward = {
     id: `mov-${Date.now()}`,
     fecha: fecha || new Date().toLocaleDateString('es-ES'),
@@ -163,12 +172,13 @@ app.post('/api/rewards', (req, res) => {
     cantManos: 0,
     minutos: 0,
     banca: Number((last.banca + deltaBanca).toFixed(2)),
-    ganancia: last.ganancia, // Recompensas y retiros no alteran la ganancia en mesas
+    ganancia: last.ganancia,
     deltaBanca,
     deltaGanancia: 0,
-    recompensaCode: tipo === 'retiro' ? 2 : 1,
+    stake: null,
+    recompensaCode: code,
     fuente: 'manual',
-    notas: notas || (tipo === 'recompensa' ? 'Cofre / Stars Reward' : 'Movimiento de saldo')
+    notas: notas || (tipo === 'recompensa' ? 'Cofre / Stars Reward' : tipo === 'deposito' ? 'Depósito' : 'Retiro')
   };
 
   sessions.push(newReward);
@@ -187,7 +197,6 @@ app.delete('/api/sessions/:id', (req, res) => {
     return res.status(404).json({ success: false, message: 'Registro no encontrado' });
   }
 
-  // Recalculate balances
   sessions = recalculateBalances(sessions);
   saveSessions(sessions);
 
@@ -209,33 +218,14 @@ app.post('/api/config', (req, res) => {
 // PokerStars Folder Status & Sync
 app.get('/api/pokerstars/status', (req, res) => {
   const cfg = getConfig();
-  const dirPath = cfg.pokerstarsDir;
+  const dirPath = resolveHandHistoryDir(cfg.pokerstarsDir);
   const exists = fs.existsSync(dirPath);
 
   let filesCount = 0;
-  let fileList = [];
-
   if (exists) {
     try {
-      // Find all txt files recursively
-      function findTxt(dir) {
-        let results = [];
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        for (const e of entries) {
-          const full = path.join(dir, e.name);
-          if (e.isDirectory()) {
-            results = results.concat(findTxt(full));
-          } else if (e.name.toLowerCase().endsWith('.txt')) {
-            results.push(full);
-          }
-        }
-        return results;
-      }
-      fileList = findTxt(dirPath);
-      filesCount = fileList.length;
-    } catch (e) {
-      console.error(e);
-    }
+      filesCount = fs.readdirSync(dirPath).filter(f => f.endsWith('.txt')).length;
+    } catch (e) {}
   }
 
   res.json({
@@ -247,73 +237,50 @@ app.get('/api/pokerstars/status', (req, res) => {
   });
 });
 
-// PokerStars Sync from folder
+// Manual Sync trigger
 app.post('/api/pokerstars/sync', (req, res) => {
   const cfg = getConfig();
-  const dirPath = cfg.pokerstarsDir;
-
-  if (!fs.existsSync(dirPath)) {
-    return res.status(400).json({ success: false, message: 'La ruta de PokerStars no existe en el sistema' });
-  }
-
-  try {
-    function findTxt(dir) {
-      let results = [];
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const e of entries) {
-        const full = path.join(dir, e.name);
-        if (e.isDirectory()) {
-          results = results.concat(findTxt(full));
-        } else if (e.name.toLowerCase().endsWith('.txt')) {
-          results.push(full);
-        }
-      }
-      return results;
-    }
-
-    const files = findTxt(dirPath);
-    if (files.length === 0) {
-      return res.json({ success: true, importedHands: 0, message: 'No se encontraron archivos de historial .txt en la carpeta' });
-    }
-
-    let allHands = [];
-    for (const f of files) {
-      const content = fs.readFileSync(f, 'utf-8');
-      const hands = parseHandHistoryContent(content, cfg.heroName);
-      allHands = allHands.concat(hands);
-    }
-
-    if (allHands.length === 0) {
-      return res.json({ success: true, importedHands: 0, message: 'Archivos escaneados pero no se detectaron manos válidas del jugador' });
-    }
-
-    const summary = summarizeHands(allHands);
-    res.json({
-      success: true,
-      filesScanned: files.length,
-      importedHands: allHands.length,
-      summary
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+  const result = syncPokerStarsFolder(cfg.pokerstarsDir, cfg.heroName);
+  res.json(result);
 });
 
-// Parse pasted raw hand history text
-app.post('/api/pokerstars/parse-raw', (req, res) => {
-  const { text, heroName } = req.body;
-  if (!text) {
-    return res.status(400).json({ success: false, message: 'Texto requerido' });
+// Live status endpoint
+app.get('/api/pokerstars/live', (req, res) => {
+  const cfg = getConfig();
+  const resolvedDir = resolveHandHistoryDir(cfg.pokerstarsDir);
+  let isPlaying = false;
+  let activeTables = [];
+  let lastMtime = 0;
+
+  if (fs.existsSync(resolvedDir)) {
+    try {
+      const files = fs.readdirSync(resolvedDir).filter(f => f.endsWith('.txt'));
+      const now = Date.now();
+      for (const f of files) {
+        const full = path.join(resolvedDir, f);
+        const stat = fs.statSync(full);
+        // If file modified in last 10 minutes, player is actively playing
+        if (now - stat.mtimeMs < 10 * 60 * 1000) {
+          isPlaying = true;
+          activeTables.push(f.replace(/^HH\d+\s+/, '').replace(/\.txt$/, ''));
+          if (stat.mtimeMs > lastMtime) lastMtime = stat.mtimeMs;
+        }
+      }
+    } catch (e) {}
   }
 
-  const hands = parseHandHistoryContent(text, heroName);
-  const summary = summarizeHands(hands);
+  const sessions = loadSessions();
+  const today = new Date();
+  const fechaHoy = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+  const todaySession = sessions.find(s => s.fecha === fechaHoy && s.tipo === 'sesion');
 
   res.json({
     success: true,
-    handsCount: hands.length,
-    summary,
-    sampleHands: hands.slice(0, 10)
+    isPlaying,
+    activeTables,
+    todayHands: todaySession ? todaySession.cantManos : 0,
+    todayProfit: todaySession ? todaySession.deltaGanancia : 0,
+    lastUpdate: lastMtime ? new Date(lastMtime).toLocaleTimeString() : null
   });
 });
 
@@ -326,6 +293,11 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-app.listen(PORT, () => {
+// Iniciar servidor y auto-watcher
+const server = app.listen(PORT, () => {
   console.log(`Servidor miPokerTracker v2.0 escuchando en http://localhost:${PORT}`);
+  const cfg = getConfig();
+  startAutoWatcher(cfg.pokerstarsDir, cfg.heroName, (update) => {
+    console.log('[Auto-Sync Live] Actualizado:', update.handsCount, 'manos hoy');
+  });
 });

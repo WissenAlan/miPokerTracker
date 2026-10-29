@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, Trash2, Download, ArrowUpDown, ChevronLeft, ChevronRight, Calendar, DollarSign } from 'lucide-react';
+import { Search, Filter, Trash2, Download, ArrowUpDown, ChevronLeft, ChevronRight, Calendar, DollarSign, Layers } from 'lucide-react';
 
 export default function SessionTable({ sessions, onDeleteSession }) {
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState('all'); // 'all' | 'sesion' | 'recompensa' | 'movimientos'
+  const [filterType, setFilterType] = useState('all'); // 'all' | 'NL2' | 'NL5' | 'sesion' | 'recompensa' | 'movimientos'
   const [page, setPage] = useState(1);
   const pageSize = 15;
 
@@ -11,7 +11,8 @@ export default function SessionTable({ sessions, onDeleteSession }) {
     if (!sessions) return [];
     return sessions
       .filter(s => {
-        if (filterType === 'sesion' && s.tipo !== 'sesion') return false;
+        if (filterType === 'NL2' && s.stake !== 'NL2') return false;
+        if (filterType === 'NL5' && s.stake !== 'NL5') return false;
         if (filterType === 'recompensa' && s.tipo !== 'recompensa') return false;
         if (filterType === 'movimientos' && s.tipo !== 'deposito' && s.tipo !== 'retiro') return false;
 
@@ -20,7 +21,8 @@ export default function SessionTable({ sessions, onDeleteSession }) {
           const matchFecha = s.fecha && s.fecha.toLowerCase().includes(q);
           const matchNotas = s.notas && s.notas.toLowerCase().includes(q);
           const matchTipo = s.tipo && s.tipo.toLowerCase().includes(q);
-          return matchFecha || matchNotas || matchTipo;
+          const matchStake = s.stake && s.stake.toLowerCase().includes(q);
+          return matchFecha || matchNotas || matchTipo || matchStake;
         }
         return true;
       })
@@ -37,9 +39,10 @@ export default function SessionTable({ sessions, onDeleteSession }) {
   // Export CSV
   const handleExportCSV = () => {
     if (!sessions || sessions.length === 0) return;
-    const headers = ['Fecha', 'Tipo', 'Manos', 'Minutos', 'Banca Acumulada', 'Ganancia Juego', 'Delta Saldo', 'Delta Ganancia', 'Fuente', 'Notas'];
+    const headers = ['Fecha', 'Nivel', 'Tipo', 'Manos', 'Minutos', 'Banca Acumulada', 'Ganancia Juego', 'Delta Saldo', 'Delta Ganancia', 'Fuente', 'Notas'];
     const rows = sessions.map(s => [
       s.fecha,
+      s.stake || '',
       s.tipo,
       s.cantManos || 0,
       s.minutos || 0,
@@ -82,7 +85,7 @@ export default function SessionTable({ sessions, onDeleteSession }) {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Buscar por fecha o notas..."
+              placeholder="Buscar fecha o nivel..."
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
               className="pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-48"
@@ -93,7 +96,8 @@ export default function SessionTable({ sessions, onDeleteSession }) {
           <div className="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center text-xs">
             {[
               { id: 'all', label: 'Todos' },
-              { id: 'sesion', label: 'Sesiones' },
+              { id: 'NL2', label: 'NL2 ($2)' },
+              { id: 'NL5', label: 'NL5 ($5)' },
               { id: 'recompensa', label: 'Cofres' },
               { id: 'movimientos', label: 'Depósitos / Retiros' }
             ].map(f => (
@@ -127,6 +131,7 @@ export default function SessionTable({ sessions, onDeleteSession }) {
           <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
             <tr>
               <th className="py-3 px-4">Fecha</th>
+              <th className="py-3 px-4">Nivel</th>
               <th className="py-3 px-4">Tipo</th>
               <th className="py-3 px-4 text-right">Manos</th>
               <th className="py-3 px-4 text-right">Minutos</th>
@@ -139,7 +144,7 @@ export default function SessionTable({ sessions, onDeleteSession }) {
           <tbody className="divide-y divide-slate-800/60 font-mono">
             {currentItems.length === 0 ? (
               <tr>
-                <td colSpan="8" className="py-8 text-center text-slate-500 font-sans">
+                <td colSpan="9" className="py-8 text-center text-slate-500 font-sans">
                   No se encontraron registros con los filtros actuales.
                 </td>
               </tr>
@@ -170,6 +175,19 @@ export default function SessionTable({ sessions, onDeleteSession }) {
                       <div>{item.fecha}</div>
                       {item.notas && (
                         <div className="text-[10px] text-slate-500 font-sans truncate max-w-xs">{item.notas}</div>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-4 font-sans">
+                      {item.stake ? (
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider ${
+                          item.stake === 'NL5'
+                            ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
+                            : 'bg-blue-500/10 text-blue-300 border border-blue-500/30'
+                        }`}>
+                          {item.stakeLabel || item.stake}
+                        </span>
+                      ) : (
+                        <span className="text-slate-600">-</span>
                       )}
                     </td>
                     <td className="py-2.5 px-4 font-sans">

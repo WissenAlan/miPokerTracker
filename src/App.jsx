@@ -8,7 +8,9 @@ import {
   Layers,
   Sparkles,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  Activity,
+  Flame
 } from 'lucide-react';
 
 import KPICards from './components/KPICards';
@@ -22,6 +24,10 @@ export default function App() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedStake, setSelectedStake] = useState('ALL'); // 'ALL' | 'NL2' | 'NL5'
+
+  // Live PokerStars status
+  const [liveStatus, setLiveStatus] = useState(null);
 
   // Modals state
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
@@ -29,8 +35,6 @@ export default function App() {
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   const fetchSessions = async () => {
-    setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/sessions');
       const data = await res.json();
@@ -46,8 +50,30 @@ export default function App() {
     }
   };
 
+  const fetchLiveStatus = async () => {
+    try {
+      const res = await fetch('/api/pokerstars/live');
+      const data = await res.json();
+      if (data.success) {
+        setLiveStatus(data);
+        if (data.isPlaying) {
+          // If playing, refresh sessions quietly
+          fetchSessions();
+        }
+      }
+    } catch (e) {}
+  };
+
   useEffect(() => {
     fetchSessions();
+    fetchLiveStatus();
+
+    // Auto-polling every 10 seconds for live updates while playing PokerStars
+    const interval = setInterval(() => {
+      fetchLiveStatus();
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleDeleteSession = async (id) => {
@@ -69,7 +95,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Top Navbar */}
       <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           {/* Logo & Version */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 shadow-lg shadow-emerald-950 flex items-center justify-center">
@@ -90,14 +116,27 @@ export default function App() {
             </div>
           </div>
 
+          {/* Center: Live Playing Badge if PokerStars active */}
+          {liveStatus && liveStatus.isPlaying && (
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs animate-pulse shadow-lg shadow-emerald-950/30">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400"></span>
+              <span className="font-semibold">PokerStars en juego:</span>
+              <span className="font-mono">{liveStatus.todayHands} manos hoy</span>
+              <span className={`font-mono font-bold ${liveStatus.todayProfit >= 0 ? 'text-green-400' : 'text-rose-400'}`}>
+                ({liveStatus.todayProfit >= 0 ? '+' : ''}${liveStatus.todayProfit.toFixed(2)})
+              </span>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="flex items-center gap-2.5">
             {/* Sync PokerStars */}
             <button
               onClick={() => setIsSyncModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-all hover:scale-[1.02]"
+              title="Abrir sincronizador de PokerStars"
             >
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+              <span className={`w-2 h-2 rounded-full ${liveStatus?.isPlaying ? 'bg-emerald-400 animate-ping' : 'bg-red-500'}`}></span>
               <FolderSearch className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">PokerStars</span>
             </button>
@@ -122,7 +161,7 @@ export default function App() {
 
             {/* Refresh */}
             <button
-              onClick={fetchSessions}
+              onClick={() => { fetchSessions(); fetchLiveStatus(); }}
               disabled={loading}
               className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
               title="Recargar datos"
@@ -147,13 +186,17 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* 1. Metric Cards */}
-            <KPICards sessions={sessions} />
+            {/* 1. Metric Cards with Stake Selection */}
+            <KPICards sessions={sessions} selectedStake={selectedStake} />
 
-            {/* 2. Interactive Evolution Chart */}
-            <EvolutionChart sessions={sessions} />
+            {/* 2. Interactive Evolution Chart with Milestone and Stake Filters */}
+            <EvolutionChart
+              sessions={sessions}
+              selectedStake={selectedStake}
+              onSelectStake={setSelectedStake}
+            />
 
-            {/* 3. Detailed Sessions Table */}
+            {/* 3. Detailed Sessions Table with Stake Badges & Filters */}
             <SessionTable sessions={sessions} onDeleteSession={handleDeleteSession} />
           </>
         )}
@@ -165,7 +208,7 @@ export default function App() {
           <div>miPokerTracker v2.0 • Stack: Node.js, React 18, Tailwind CSS & Recharts</div>
           <div className="flex items-center gap-2 text-slate-400">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>80 sesiones migradas desde v1 saldo.dat</span>
+            <span>Hito NL5 activo (desde 30/09/2026) • Auto-Sync PokerStars</span>
           </div>
         </div>
       </footer>
