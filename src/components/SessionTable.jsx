@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, Trash2, Download, ArrowUpDown, ChevronLeft, ChevronRight, Calendar, DollarSign, Layers } from 'lucide-react';
+import { Search, Filter, Trash2, Edit3, Download, ArrowUpDown, ChevronLeft, ChevronRight, Calendar, DollarSign, Layers } from 'lucide-react';
 
-export default function SessionTable({ sessions, onDeleteSession }) {
+export default function SessionTable({ sessions, onDeleteSession, onEditSession }) {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('all'); // 'all' | 'NL2' | 'NL5' | 'sesion' | 'recompensa' | 'movimientos'
   const [page, setPage] = useState(1);
@@ -113,6 +113,18 @@ export default function SessionTable({ sessions, onDeleteSession }) {
             ))}
           </div>
 
+          {/* Edit Latest Session Button */}
+          {sessions && sessions.length > 0 && onEditSession && (
+            <button
+              onClick={() => onEditSession(sessions[sessions.length - 1])}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 text-xs font-semibold transition-all hover:scale-[1.02]"
+              title="Ajustar o corregir la última sesión"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Editar última sesión</span>
+            </button>
+          )}
+
           {/* Export CSV Button */}
           <button
             onClick={handleExportCSV}
@@ -216,13 +228,24 @@ export default function SessionTable({ sessions, onDeleteSession }) {
                       ${item.ganancia.toFixed(2)}
                     </td>
                     <td className="py-2.5 px-4 text-center">
-                      <button
-                        onClick={() => onDeleteSession(item.id)}
-                        className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                        title="Eliminar este registro"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        {onEditSession && (
+                          <button
+                            onClick={() => onEditSession(item)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                            title="Editar sesión o ajustar saldo"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onDeleteSession(item.id)}
+                          className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                          title="Eliminar este registro"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

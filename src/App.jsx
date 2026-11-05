@@ -19,6 +19,7 @@ import SessionTable from './components/SessionTable';
 import AddSessionModal from './components/AddSessionModal';
 import AddRewardModal from './components/AddRewardModal';
 import PokerStarsSyncModal from './components/PokerStarsSyncModal';
+import EditSessionModal from './components/EditSessionModal';
 
 export default function App() {
   const [sessions, setSessions] = useState([]);
@@ -33,6 +34,8 @@ export default function App() {
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [isRewardModalOpen, setIsRewardModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingSession, setEditingSession] = useState(null);
 
   const fetchSessions = async () => {
     try {
@@ -89,6 +92,11 @@ export default function App() {
     } catch (err) {
       alert('Error eliminando sesión: ' + err.message);
     }
+  };
+
+  const handleOpenEditSession = (session) => {
+    setEditingSession(session);
+    setIsEditModalOpen(true);
   };
 
   return (
@@ -197,7 +205,11 @@ export default function App() {
             />
 
             {/* 3. Detailed Sessions Table with Stake Badges & Filters */}
-            <SessionTable sessions={sessions} onDeleteSession={handleDeleteSession} />
+            <SessionTable
+              sessions={sessions}
+              onDeleteSession={handleDeleteSession}
+              onEditSession={handleOpenEditSession}
+            />
           </>
         )}
       </main>
@@ -230,6 +242,24 @@ export default function App() {
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
         onImportCompleted={fetchSessions}
+      />
+
+      <EditSessionModal
+        isOpen={isEditModalOpen}
+        session={editingSession}
+        prevBanca={(() => {
+          if (!editingSession || !sessions) return 0;
+          const idx = sessions.findIndex(s => s.id === editingSession.id);
+          return idx > 0 ? (sessions[idx - 1].banca || 0) : 0;
+        })()}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingSession(null);
+        }}
+        onSessionUpdated={() => {
+          fetchSessions();
+          fetchLiveStatus();
+        }}
       />
     </div>
   );

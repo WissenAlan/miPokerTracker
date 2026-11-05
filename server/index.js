@@ -203,6 +203,65 @@ app.delete('/api/sessions/:id', (req, res) => {
   res.json({ success: true, message: 'Registro eliminado correctamente', count: sessions.length });
 });
 
+// PUT update session by ID (edit latest or any session)
+app.put('/api/sessions/:id', (req, res) => {
+  let sessions = loadSessions();
+  const index = sessions.findIndex(s => s.id === req.params.id);
+
+  if (index === -1) {
+    return res.status(404).json({ success: false, message: 'Registro no encontrado' });
+  }
+
+  const target = sessions[index];
+  const { fecha, cantManos, minutos, deltaBanca, deltaGanancia, banca, stake, notas } = req.body;
+
+  // Si se envió saldo de banca final deseado, calculamos deltaBanca = banca - prevBanca
+  if (banca !== undefined && banca !== null && banca !== '') {
+    const prevBanca = index > 0 ? (sessions[index - 1].banca || 0) : 0;
+    const targetBancaNum = parseFloat(banca);
+    if (!isNaN(targetBancaNum)) {
+      const calculatedDelta = Number((targetBancaNum - prevBanca).toFixed(2));
+      target.deltaBanca = calculatedDelta;
+      if (target.tipo === 'sesion') {
+        target.deltaGanancia = calculatedDelta;
+      }
+    }
+  } else {
+    if (deltaBanca !== undefined && deltaBanca !== null && deltaBanca !== '') {
+      target.deltaBanca = parseFloat(deltaBanca);
+    }
+    if (deltaGanancia !== undefined && deltaGanancia !== null && deltaGanancia !== '') {
+      target.deltaGanancia = parseFloat(deltaGanancia);
+    }
+  }
+
+  if (cantManos !== undefined && cantManos !== null) {
+    target.cantManos = parseInt(cantManos, 10) || 0;
+  }
+  if (minutos !== undefined && minutos !== null) {
+    target.minutos = parseInt(minutos, 10) || 0;
+  }
+  if (stake !== undefined && stake !== null) {
+    target.stake = stake;
+    target.stakeLabel = stake === 'NL5' ? 'NL5 ($5)' : stake === 'NL2' ? 'NL2 ($2)' : stake;
+  }
+  if (notas !== undefined) {
+    target.notas = notas;
+  }
+  if (fecha) {
+    target.fecha = fecha;
+    const parts = fecha.split('/');
+    if (parts.length === 3) {
+      target.isoDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+  }
+
+  sessions = recalculateBalances(sessions);
+  saveSessions(sessions);
+
+  res.json({ success: true, message: 'Registro actualizado correctamente', data: sessions[index] });
+});
+
 // Config endpoints
 app.get('/api/config', (req, res) => {
   res.json({ success: true, config: getConfig() });

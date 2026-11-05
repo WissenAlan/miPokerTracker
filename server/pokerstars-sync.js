@@ -58,12 +58,17 @@ function syncPokerStarsFolder(hhDir, heroName = 'alan_vincen') {
     return { success: true, handsCount: 0, message: 'No hay archivos .txt' };
   }
 
-  // Parse all hands
+  // Parse all hands, taggeando cada mano con su sourceFile (= mesa)
   let allHands = [];
   for (const f of files) {
     try {
       const content = fs.readFileSync(f, 'utf-8');
       const hands = parseHandHistoryContent(content, heroName);
+      // Agregar sourceFile para poder agrupar por mesa en summarizeHandsByStack
+      const fileName = path.basename(f);
+      for (const h of hands) {
+        h.sourceFile = fileName;
+      }
       allHands = allHands.concat(hands);
     } catch (err) {
       console.error('Error leyendo archivo:', f, err);
@@ -89,6 +94,7 @@ function syncPokerStarsFolder(hhDir, heroName = 'alan_vincen') {
   const fechaHoy = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
   const isoHoy = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
+  // Calcular estadísticas y profit con el parser corregido
   const summary = summarizeHands(uniqueHands);
 
   // Cargar sessions.json y actualizar o crear sesión de hoy

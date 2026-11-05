@@ -1,6 +1,19 @@
 /**
  * Parser bilingüe (Español / Inglés) de Hand History de PokerStars (.txt)
+ *
+ * RASTREO PRECISO POR CALLE:
+ * En cada calle (Preflop, Flop, Turn, River), el monto acumulado de apuestas
+ * del jugador se reinicia.
+ * Los 'raises' (sube $X a $Y / raises $X to $Y) indican que la apuesta TOTAL
+ * acumulada en esa calle pasa a ser $Y. La inversión adicional en ese momento
+ * es ($Y - streetInvested).
+ * Las apuestas devueltas ('uncalled bet / apuesta no igualada') se restan.
+ * Esto garantiza que el profit de cada mano sea exacto al centavo.
  */
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 function parseHand(handText, defaultHero = null) {
   if (!handText || !handText.trim()) return null;
@@ -9,8 +22,6 @@ function parseHand(handText, defaultHero = null) {
   if (lines.length < 3) return null;
 
   // 1. Cabecera (Inglés o Español)
-  // Ej Inglés: PokerStars Hand #245892301928: Hold'em No Limit ($0.01/$0.02 USD) - 2026/10/28 14:05:12 ET
-  // Ej Español: Mano #262546103762 de PokerStars:  Hold'em sin límite ($0.02/$0.05 USD) - 2026/10/29 11:51:40 ART [2026/10/29 10:51:40 ET]
   let handId = null;
   let gameType = '';
   let stakesStr = '';
@@ -56,8 +67,21 @@ function parseHand(handText, defaultHero = null) {
     return null;
   }
 
-  // 3. Procesar acciones
-  let invested = 0;
+  // 3. Extraer stack inicial del héroe (antes de las cartas)
+  const heroRegex = escapeRegex(heroName);
+  let heroStackBefore = null;
+
+  for (const line of lines) {
+    if (line.includes('*** CARTAS PROPIAS ***') || line.includes('*** HOLE CARDS ***')) break;
+    const mEs = line.match(new RegExp(`Asiento n\\.º\\s+\\d+:\\s+${heroRegex}\\s+\\(\\$?([\\d.]+)\\s+en fichas\\)`, 'i'));
+    if (mEs) { heroStackBefore = parseFloat(mEs[1]); break; }
+    const mEn = line.match(new RegExp(`Seat\\s+\\d+:\\s+${heroRegex}\\s+\\(\\$?([\\d.]+)\\s+in chips\\)`, 'i'));
+    if (mEn) { heroStackBefore = parseFloat(mEn[1]); break; }
+  }
+
+  // 4. Procesar acciones con rastreo de calle
+  let totalInvested = 0;
+  let streetInvested = 0;
   let collected = 0;
   let vpip = false;
   let pfr = false;
@@ -68,20 +92,21 @@ function parseHand(handText, defaultHero = null) {
   let inPreflop = false;
   let inSummary = false;
 
-  const heroRegex = escapeRegex(heroName);
-
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
+    // Cambio de calle: reiniciar streetInvested
     if (line.includes('*** HOLE CARDS ***') || line.includes('*** CARTAS PROPIAS ***')) {
       inPreflop = true;
+      streetInvested = 0;
       continue;
     }
     if (line.includes('*** FLOP ***') || line.includes('*** TURN ***') || line.includes('*** RIVER ***')) {
       inPreflop = false;
+      streetInvested = 0;
       continue;
     }
-    if (line.includes('*** SHOW DOWN ***') || line.includes('*** CONFRONTACIÓN ***') || line.includes('*** CONFRONTACI') ) {
+    if (line.includes('*** SHOW DOWN ***') || line.includes('*** CONFRONTACIÓN ***') || line.includes('*** CONFRONTACI')) {
       inPreflop = false;
       continue;
     }
@@ -103,18 +128,21 @@ function parseHand(handText, defaultHero = null) {
     }
 
     if (!inSummary) {
-      // Ciegas / Antes
-      // pone ciega pequeña $0.02 | posts small blind $0.02 | posts big blind $0.05
+      // Blinds & Antes
       const blindMatch = line.match(new RegExp(`^${heroRegex}:\\s*(?:pone ciega pequeña|pone ciega grande|pone ante|posts small blind|posts big blind|posts ante)\\s+\\$?([\\d.]+)`, 'i'));
       if (blindMatch) {
-        invested += parseFloat(blindMatch[1]) || 0;
+        const amt = parseFloat(blindMatch[1]) || 0;
+        totalInvested += amt;
+        streetInvested += amt;
         continue;
       }
 
       // Calls / Iguala
       const callMatch = line.match(new RegExp(`^${heroRegex}:\\s*(?:iguala|calls)\\s+\\$?([\\d.]+)`, 'i'));
       if (callMatch) {
-        invested += parseFloat(callMatch[1]) || 0;
+        const amt = parseFloat(callMatch[1]) || 0;
+        totalInvested += amt;
+        streetInvested += amt;
         if (inPreflop) vpip = true;
         continue;
       }
@@ -122,17 +150,20 @@ function parseHand(handText, defaultHero = null) {
       // Bets / Apuesta
       const betMatch = line.match(new RegExp(`^${heroRegex}:\\s*(?:apuesta|bets)\\s+\\$?([\\d.]+)`, 'i'));
       if (betMatch) {
-        invested += parseFloat(betMatch[1]) || 0;
+        const amt = parseFloat(betMatch[1]) || 0;
+        totalInvested += amt;
+        streetInvested += amt;
         continue;
       }
 
-      // Raises / Sube
-      // Ej Español: alan_vincen: sube $0.10 a $0.15
-      // Ej Inglés: Hero: raises $0.04 to $0.06
+      // Raises / Sube: "sube $X a $Y" o "raises $X to $Y"
+      // El total acumulado en esta calle pasa a ser $Y (o streetInvested + $X si no hay 'a $Y')
       const raiseMatch = line.match(new RegExp(`^${heroRegex}:\\s*(?:sube|raises)\\s+\\$?([\\d.]+)(?:\\s+(?:a|to)\\s+\\$?([\\d.]+))?`, 'i'));
       if (raiseMatch) {
-        const diff = parseFloat(raiseMatch[1]) || 0;
-        invested += diff;
+        const totalTo = raiseMatch[2] ? parseFloat(raiseMatch[2]) : (streetInvested + (parseFloat(raiseMatch[1]) || 0));
+        const added = totalTo - streetInvested;
+        totalInvested += added;
+        streetInvested = totalTo;
         if (inPreflop) {
           vpip = true;
           pfr = true;
@@ -141,29 +172,30 @@ function parseHand(handText, defaultHero = null) {
       }
 
       // Uncalled bet returned
-      // La apuesta no igualada ($0.47) se ha devuelto a YeezusSSJ
-      // Uncalled bet ($0.08) returned to Hero
       const uncalledMatch = line.match(new RegExp(`(?:La apuesta no igualada\\s*\\(\\$?([\\d.]+)\\)\\s*se ha devuelto a|Uncalled bet\\s*\\(\\$?([\\d.]+)\\)\\s*returned to)\\s+${heroRegex}`, 'i'));
       if (uncalledMatch) {
         const amt = parseFloat(uncalledMatch[1] || uncalledMatch[2]) || 0;
-        invested -= amt;
+        totalInvested -= amt;
+        streetInvested -= amt;
         continue;
       }
 
       // Collected during hand (sin showdown)
-      // silvegunman se llevó $1.21 del pozo
-      // Hero collected $0.13 from pot
       const collectedMatch = line.match(new RegExp(`^${heroRegex}\\s+(?:se llevó|collected)\\s+\\$?([\\d.]+)\\s*(?:del pozo|from pot)`, 'i'));
       if (collectedMatch) {
         collected += parseFloat(collectedMatch[1]) || 0;
         continue;
       }
+
+      // Retiro de fondos / cashout mid-hand
+      const cashoutMatch = line.match(new RegExp(`^${heroRegex}\\s+(?:retira fondos|retiró fondos)\\s+de la mano por\\s+\\$?([\\d.]+)`, 'i'));
+      if (cashoutMatch) {
+        collected += parseFloat(cashoutMatch[1]) || 0;
+        continue;
+      }
     } else {
-      // En la sección RESUMEN / SUMMARY
-      // Asiento 2: silvegunman mostró [2c 2d] y ganó ($1.21)
-      // Asiento 6: alan_vincen se llevó ($1.21)
-      // Seat 4: Hero collected ($0.13)
-      const summaryWinMatch = line.match(new RegExp(`(?:Asiento|Seat)\\s+\\d+:\\s+${heroRegex}\\s+(?:.*(?:ganó|se llevó|collected|won)\\s*\\(\\$?([\\d.]+)\\))`, 'i'));
+      // RESUMEN: detectar cobro si no fue capturado antes
+      const summaryWinMatch = line.match(new RegExp(`(?:Asiento|Seat)\\s+\\d+:\\s+${heroRegex}\\s+(?:.*(?:ganó|se llevó|recaudó|collected|won)\\s*\\(\\$?([\\d.]+)\\))`, 'i'));
       if (summaryWinMatch) {
         const winAmt = parseFloat(summaryWinMatch[1]) || 0;
         if (collected === 0) {
@@ -174,9 +206,9 @@ function parseHand(handText, defaultHero = null) {
     }
   }
 
-  invested = Number(invested.toFixed(2));
+  totalInvested = Number(totalInvested.toFixed(2));
   collected = Number(collected.toFixed(2));
-  const profit = Number((collected - invested).toFixed(2));
+  const profit = Number((collected - totalInvested).toFixed(2));
 
   return {
     handId,
@@ -185,7 +217,8 @@ function parseHand(handText, defaultHero = null) {
     stakes: { sb, bb },
     hero: heroName,
     holeCards,
-    invested,
+    heroStackBefore,
+    invested: totalInvested,
     collected,
     profit,
     vpip,
@@ -195,12 +228,7 @@ function parseHand(handText, defaultHero = null) {
   };
 }
 
-function escapeRegex(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function parseHandHistoryContent(content, defaultHero = null) {
-  // Split por inicio de mano en español o inglés
   const rawHands = content.split(/(?=(?:Mano\s+#\d+\s+de\s+PokerStars|PokerStars\s+(?:Zoom\s+)?Hand\s+#\d+))/i);
   const hands = [];
 
